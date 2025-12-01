@@ -1,166 +1,99 @@
 const express = require('express');
-const mongoose = require('mongoose');
+const bodyParser = require('body-parser'); // Não é estritamente necessário na v4.16+ do Express, mas vou manter para clareza
 const cors = require('cors');
-const bodyParser = require('body-parser');
-require('dotenv').config();
+const fs = require('fs'); // Para salvar o arquivo no servidor
+const path = require('path'); // Para resolver caminhos
 
 const app = express();
+const port = 3000;
 
-// Configurações
+// Configuração do CORS (Crucial para comunicação Front-End <-> Back-End)
 app.use(cors({
-    origin: '*', // Em produção, substitua pelo IP/domínio do seu app
-    methods: ['GET', 'POST', 'PUT', 'DELETE']
+    origin: '*', // Permite todas as origens (bom para desenvolvimento)
+    methods: 'GET,POST',
 }));
-app.use(bodyParser.json({ limit: '20mb' })); // Para imagens grandes
 
-// Conexão com MongoDB Atlas
-const mongoUri = process.env.MONGODB_URI || "mongodb+srv://bia:SENHA_AQUI@cluster0.mongodb.net/laboratorioDB?retryWrites=true&w=majority";
+// --- CORREÇÃO E MELHORIA CRÍTICA AQUI ---
+// Aumenta o limite do corpo da requisição para 50MB.
+// Isso é essencial para lidar com strings Base64 de imagens grandes.
+app.use(express.json({ limit: '50mb' })); 
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-mongoose.connect(mongoUri, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-})
-.then(() => console.log('Conectado ao MongoDB Atlas!'))
-.catch(err => {
-    console.error('Erro ao conectar:', err);
-    process.exit(1);
+// Rota de Teste Simples
+app.get('/', (req, res) => {
+    res.send('Servidor Geo-Mobile Online! A API está em /api/defeitos');
 });
 
-// Schema do Defeito
-const DefeitoSchema = new mongoose.Schema({
-    titulo: {
-        type: String,
-        required: [true, 'Título é obrigatório'],
-        trim: true
-    },
-    descricao: {
-        type: String,
-        required: [true, 'Descrição é obrigatória'],
-        trim: true
-    },
-    local: {
-        type: String,
-        required: [true, 'Local é obrigatório'],
-        trim: true
-    },
-    laboratorio: {
-        type: String,
-        required: [true, 'Laboratório é obrigatório'],
-        trim: true
-    },
-    foto: {
-        type: String,
-        default: null
-    },
-    dataHora: {
-        type: Date,
-        default: Date.now
-    },
-    status: {
-        type: String,
-        enum: ['pendente', 'em_manutencao', 'resolvido'],
-        default: 'pendente'
-    }
-}, {
-    timestamps: true // Adiciona createdAt e updatedAt automaticamente
-});
-
-const Defeito = mongoose.model('Defeito', DefeitoSchema);
-
-// Rotas
-// POST - Criar novo defeito
+// 📌 Rota Principal: POST /api/defeitos
 app.post('/api/defeitos', async (req, res) => {
-    try {
-        const { titulo, descricao, local, laboratorio, foto } = req.body;
+    const { titulo, descricao, local, laboratorio, foto } = req.body;
+    
+    // Simulação do ID e Data/Hora
+    const novoDefeito = {
+        id: Date.now(),
+        dataHora: new Date().toISOString(),
+        titulo,
+        descricao,
+        local,
+        laboratorio,
+        // O campo 'foto' ainda é a string Base64 por enquanto
+        foto: null, 
+    };
+
+    // --- LÓGICA PARA SALVAR IMAGEM BASE64 ---
+    if (foto) {
+        // 1. Remove o prefixo 'data:image/jpeg;base64,' para obter apenas os dados Base64
+        const base64Data = foto.replace(/^data:image\/\w+;base64,/, "");
         
-        // Validação básica
-        if (!titulo || !descricao || !local || !laboratorio) {
-            return res.status(400).json({
-                success: false,
-                message: 'Preencha todos os campos obrigatórios'
-            });
+        // 2. Cria um buffer a partir da string Base64
+        const buffer = Buffer.from(base64Data, 'base64');
+        
+        // 3. Define o nome e o caminho do arquivo
+        const nomeArquivo = `defeito_${novoDefeito.id}.jpeg`;
+        const caminhoArquivo = path.join(__dirname, 'uploads', nomeArquivo); // 'uploads' é a pasta
+
+        // 4. Cria a pasta 'uploads' se ela não existir
+        const uploadDir = path.join(__dirname, 'uploads');
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir);
         }
 
-        const novoDefeito = new Defeito({
-            titulo,
-            descricao,
-            local,
-            laboratorio,
-            foto: foto || null
-        });
+        try {
+            // 5. Salva o arquivo localmente
+            fs.writeFileSync(caminhoArquivo, buffer);
+            
+            // 6. Altera o objeto para armazenar o caminho da imagem em vez da string Base64
+            // No front-end, você usaria o endereço do servidor/uploads/nomeArquivo
+            novoDefeito.foto = `/uploads/${nomeArquivo}`;
+            console.log(`Imagem salva em: ${caminhoArquivo}`);
 
-        await novoDefeito.save();
-        
-        res.status(201).json({
-            success: true,
-            message: 'Defeito registrado com sucesso!',
-            data: novoDefeito
-        });
-    } catch (error) {
-        console.error('Erro:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Erro ao salvar registro',
-            error: error.message
-        });
-    }
-});
-
-// GET - Listar todos os defeitos
-app.get('/api/defeitos', async (req, res) => {
-    try {
-        const defeitos = await Defeito.find().sort({ dataHora: -1 });
-        res.json({
-            success: true,
-            count: defeitos.length,
-            data: defeitos
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: 'Erro ao buscar registros',
-            error: error.message
-        });
-    }
-});
-
-// GET - Buscar defeito por ID
-app.get('/api/defeitos/:id', async (req, res) => {
-    try {
-        const defeito = await Defeito.findById(req.params.id);
-        
-        if (!defeito) {
-            return res.status(404).json({
-                success: false,
-                message: 'Defeito não encontrado'
+        } catch (err) {
+            console.error("Erro ao salvar a imagem:", err);
+            // Decide se o erro de salvar a foto deve impedir o registro do defeito
+            return res.status(500).json({ 
+                mensagem: "Falha ao processar a imagem.", 
+                detalhe: err.message 
             });
         }
-        
-        res.json({
-            success: true,
-            data: defeito
-        });
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: 'Erro ao buscar registro',
-            error: error.message
-        });
     }
-});
-
-// Middleware para tratamento de erros 404
-app.use((req, res) => {
-    res.status(404).json({
-        success: false,
-        message: 'Rota não encontrada'
+    
+    // 7. Simula a inserção no "banco de dados" (aqui você faria a lógica de DB)
+    console.log(`Defeito registrado com sucesso (ID: ${novoDefeito.id})`);
+    
+    // Resposta de sucesso para o Front-End
+    return res.status(201).json({ 
+        mensagem: "Defeito registrado!", 
+        dados: novoDefeito 
     });
 });
 
-// Inicializa o servidor
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Servidor rodando na porta ${PORT}`);
-    console.log(`Acesse: http://localhost:${PORT}`);
-    console.log(`Para acesso externo: http://SEU_IP_LOCAL:${PORT}`);
+// Adiciona o middleware para servir arquivos estáticos (imagens salvas)
+// Agora o Front-End pode acessar a imagem em: http://SEU_IP:3000/uploads/defeito_ID.jpeg
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Inicialização do Servidor
+app.listen(port, () => {
+    console.log(`Servidor rodando em http://localhost:${port}`);
+    console.log('Rotas disponíveis:');
+    console.log(`POST http://localhost:${port}/api/defeitos`);
 });
