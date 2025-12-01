@@ -74,4 +74,3 @@ Na pasta mobile, inicie o projeto Expo:
 
 ```
 npx expo start
-```
