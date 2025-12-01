@@ -23,3 +23,55 @@ Desenvolvido para permitir o registro rápido e eficiente de defeitos em equipam
 
 - Mapeamento: Mongoose
 
+⚙️ Pré-requisitos
+
+Passo 1: Instalação de Dependências no Backend
+
+```
+npm install
+```
+
+Passo 2: Instalação de Dependências no Mobile
+
+```
+npm install
+npx expo install expo-image-picker expo-network
+```
+
+Passo 3: Inicialização do Backend
+
+```
+# Para desenvolvimento com reinicialização automática:
+npm run dev
+
+# OU, para inicialização simples:
+node server.js
+```
+
+Passo 4: Configuração do IP 
+
+O aplicativo mobile precisa saber o IP da sua máquina onde o backend está rodando para se conectar.
+
+1.Descubra seu IP local (IPv4):
+
+Windows: ipconfig
+
+Mac/Linux: ifconfig ou ip addr
+
+2.Abra o arquivo mobile/App.js e substitua a variável IP_DO_PC pelo IP que você encontrou:
+
+```
+// Arquivo: mobile/App.js
+
+// --- AJUSTE MANUALMENTE ESTA LINHA ---
+const IP_DO_PC = '192.168.1.XX'; // <-- Substitua pelo seu IP REAL!
+//
+```
+
+Passo 5: Inicialização do Mobile
+
+Na pasta mobile, inicie o projeto Expo:
+
+```
+npx expo start
+```
